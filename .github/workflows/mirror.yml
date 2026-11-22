@@ -1,0 +1,54 @@
+# AIOS（非公開）の Android の版を、このリポジトリ（公開）へ写す。
+#
+# 端末のランチャーは、鍵を持たずにこのリポジトリの Releases を読んで更新します。
+# AIOS を読むための鍵（機密情報の AIOS_READ_TOKEN）は、このリポジトリに置きます。
+# 中身は、AIOS の Contents を読むだけの fine-grained のトークンです（書けない）。
+#
+# 1 時間ごとと手動で動き、AIOS にあってここに無い版だけを写します。
+name: Mirror
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: AIOS にあってここに無い版を写す
+        env:
+          SRC_TOKEN: ${{ secrets.AIOS_READ_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SRC_TOKEN" ]; then
+            echo "::error::機密情報 AIOS_READ_TOKEN がありません（AIOS-releases の Settings → Secrets and variables → Actions に登録してください）"
+            exit 1
+          fi
+          have=$(gh release list -R "$GITHUB_REPOSITORY" -L 200 --json tagName -q '.[].tagName' || true)
+          GH_TOKEN="$SRC_TOKEN" gh api "repos/Maguro-JP/AIOS/releases?per_page=30" \
+            -q '.[] | select(.draft | not) | select(.tag_name | test("^android-v[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?$")) | [.tag_name, .name, (.prerelease|tostring)] | @tsv' > src.tsv
+          copied=0
+          while IFS=$'\t' read -r tag title pre; do
+            if grep -qx "$tag" <<<"$have"; then continue; fi
+            rm -rf dl && mkdir dl
+            if ! GH_TOKEN="$SRC_TOKEN" gh release download "$tag" -R Maguro-JP/AIOS -p '*-arm64.apk' -D dl; then
+              echo "APK が無いので飛ばします: $tag"; continue
+            fi
+            apk=$(ls dl/*.apk)
+            sha=$(sha256sum "$apk" | cut -d' ' -f1)
+            printf '%s\n\n- APK の SHA-256 `%s`\n\nランチャーの「ホームの設定」の「このアプリについて」から更新できます。\n' "$title" "$sha" > notes.md
+            flag=""; [ "$pre" = "true" ] && flag="--prerelease"
+            gh release create "$tag" "$apk" -R "$GITHUB_REPOSITORY" --title "$title" --notes-file notes.md $flag
+            echo "写しました: $tag"; copied=$((copied+1))
+          done < src.tsv
+          echo "写した版: $copied"
