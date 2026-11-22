@@ -4,12 +4,14 @@
 # AIOS を読むための鍵（機密情報の AIOS_READ_TOKEN）は、このリポジトリに置きます。
 # 中身は、AIOS の Contents を読むだけの fine-grained のトークンです（書けない）。
 #
-# 1 時間ごとと手動で動き、AIOS にあってここに無い版だけを写します。
+# 5 分ごと（GitHub の予定実行の最短）と手動で動き、AIOS にあってここに無い版だけを写します。
+# AIOS の公開を合図に直接動かすには、AIOS の側にこのリポジトリを動かせる鍵が要るので、
+# 鍵を AIOS-releases の側だけに置く今の形では、短い間隔で見に行きます（写す物が無ければ数秒で終わります）。
 name: Mirror
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
