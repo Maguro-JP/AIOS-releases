@@ -1,0 +1,2 @@
+# AIOS-releases
+AIOSのリリース用
